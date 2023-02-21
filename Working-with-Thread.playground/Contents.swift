@@ -3,36 +3,10 @@ import PlaygroundSupport
 
 PlaygroundPage.current.needsIndefiniteExecution = true
 
-class Storage {
-    private let condition = NSCondition()
-    var storageForChip: [Chip] = []
-    var availables = false
-
-    func push(item: Chip) {
-        condition.lock()
-        print("\nPush начал работу")
-
-        storageForChip.append(item)
-        print("Чип добавлен в массив. Кол-во - \(storageForChip.count)")
-
-        availables = true
-        condition.signal()
-        condition.unlock()
-        print("Push закончил работу")
-    }
-
-    func pop() -> Chip {
-        while (!availables) {
-            condition.wait()
-            print("ПОТОК ВОЗОБНОСИЛСЯ")
-
-        }
-
-        availables = false
-
-        return storageForChip.removeLast()
-    }
-}
+//Это нужно просто для подсчета и для принтов
+var numberOfChipsAdded = 0
+var numberOfChipsRemoved = 0
+var numberOfSolderedChips = 0
 
 public struct Chip {
     public enum ChipType: UInt32 {
@@ -54,6 +28,39 @@ public struct Chip {
     public func sodering() {
         let soderingTime = chipType.rawValue
         sleep(UInt32(soderingTime))
+        numberOfSolderedChips += 1
+        print("Количество припаянных чипов - \(numberOfSolderedChips)")
+    }
+}
+
+class Storage {
+    private let condition = NSCondition()
+    var storageForChip: [Chip] = []
+    var availables = false
+
+    func push(item: Chip) {
+        condition.lock()
+        storageForChip.append(item)
+
+        numberOfChipsAdded += 1
+        print("\nКол-во созданных чипов - \(numberOfChipsAdded)")
+
+        availables = true
+        condition.signal()
+        condition.unlock()
+    }
+
+    func pop() -> Chip {
+        condition.lock()
+
+        while (!availables) {
+            condition.wait()
+        }
+
+        availables = false
+        condition.unlock()
+
+        return storageForChip.removeLast()
     }
 }
 
@@ -66,7 +73,7 @@ class GeneratingThread: Thread {
     }
 
     override func main() {
-        timer = Timer.scheduledTimer(timeInterval: 1,
+        timer = Timer.scheduledTimer(timeInterval: 2,
                                      target: self,
                                      selector: #selector(getChip),
                                      userInfo: nil, repeats: true)
@@ -89,8 +96,10 @@ class WorkThread: Thread {
 
     override func main() {
         repeat {
-            storage.pop().sodering()
-            print("Чип удален из массива. Кол-во - \(storage.storageForChip.count)")
+            let chip = storage.pop()
+            numberOfChipsRemoved += 1
+            print("Кол-во удаленных чипов из массива - \(numberOfChipsRemoved)")
+            chip.sodering()
 
         } while storage.storageForChip.isEmpty || storage.availables
     }
@@ -102,3 +111,6 @@ let workThread = WorkThread(storage: storage)
 
 generatingThread.start()
 workThread.start()
+
+sleep(20)
+generatingThread.cancel()
