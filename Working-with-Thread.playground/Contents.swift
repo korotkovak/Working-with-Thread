@@ -3,9 +3,36 @@ import PlaygroundSupport
 
 PlaygroundPage.current.needsIndefiniteExecution = true
 
-let condition = NSCondition()
-var availables = false
-var storageForChip: [Chip] = []
+class Storage {
+    private let condition = NSCondition()
+    var storageForChip: [Chip] = []
+    var availables = false
+
+    func push(item: Chip) {
+        condition.lock()
+        print("\nPush начал работу")
+
+        storageForChip.append(item)
+        print("Чип добавлен в массив. Кол-во - \(storageForChip.count)")
+
+        availables = true
+        condition.signal()
+        condition.unlock()
+        print("Push закончил работу")
+    }
+
+    func pop() -> Chip {
+        while (!availables) {
+            condition.wait()
+            print("ПОТОК ВОЗОБНОСИЛСЯ")
+
+        }
+
+        availables = false
+
+        return storageForChip.removeLast()
+    }
+}
 
 public struct Chip {
     public enum ChipType: UInt32 {
@@ -31,43 +58,47 @@ public struct Chip {
 }
 
 class GeneratingThread: Thread {
+    private let storage: Storage
+    private var timer = Timer()
+
+    init(storage: Storage) {
+        self.storage = storage
+    }
+
     override func main() {
-        for _ in 1...10 {
-            condition.lock()
+        timer = Timer.scheduledTimer(timeInterval: 1,
+                                     target: self,
+                                     selector: #selector(getChip),
+                                     userInfo: nil, repeats: true)
 
-            storageForChip.append(Chip.make())
-            availables = true
+        RunLoop.current.add(timer, forMode: .common)
+        RunLoop.current.run(until: Date(timeIntervalSinceNow: 20))
+    }
 
-            condition.signal()
-            condition.unlock()
-
-            Thread.sleep(forTimeInterval: 2)
-        }
+    @objc private func getChip() {
+        storage.push(item: Chip.make())
     }
 }
 
 class WorkThread: Thread {
+    private let storage: Storage
+
+    init(storage: Storage) {
+        self.storage = storage
+    }
+
     override func main() {
-        for _ in 1...10 {
+        repeat {
+            storage.pop().sodering()
+            print("Чип удален из массива. Кол-во - \(storage.storageForChip.count)")
 
-            while(!availables) {
-                condition.wait()
-            }
-
-            if let chip = storageForChip.first {
-                chip.sodering()
-                storageForChip.removeFirst()
-            }
-
-            if storageForChip.count < 1 {
-                availables = false
-            }
-        }
+        } while storage.storageForChip.isEmpty || storage.availables
     }
 }
 
-let generatingThread = GeneratingThread()
-generatingThread.start()
+let storage = Storage()
+let generatingThread = GeneratingThread(storage: storage)
+let workThread = WorkThread(storage: storage)
 
-let workThread = WorkThread()
+generatingThread.start()
 workThread.start()
