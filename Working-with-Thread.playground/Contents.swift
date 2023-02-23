@@ -1,7 +1,4 @@
 import Foundation
-import PlaygroundSupport
-
-PlaygroundPage.current.needsIndefiniteExecution = true
 
 //Это нужно просто для подсчета и для принтов
 var numberOfChipsAdded = 0
@@ -35,8 +32,12 @@ public struct Chip {
 
 class Storage {
     private let condition = NSCondition()
-    var storageForChip: [Chip] = []
-    var availables = false
+    private var storageForChip: [Chip] = []
+    var isAvailables = false
+
+    var isEmpty: Bool {
+        storageForChip.isEmpty
+    }
 
     func push(item: Chip) {
         condition.lock()
@@ -45,7 +46,7 @@ class Storage {
         numberOfChipsAdded += 1
         print("\nКол-во созданных чипов - \(numberOfChipsAdded)")
 
-        availables = true
+        isAvailables = true
         condition.signal()
         condition.unlock()
     }
@@ -53,14 +54,18 @@ class Storage {
     func pop() -> Chip {
         condition.lock()
 
-        while (!availables) {
+        while (!isAvailables) {
             condition.wait()
         }
 
-        availables = false
-        condition.unlock()
+        let chip = storageForChip.removeLast()
 
-        return storageForChip.removeLast()
+        if isEmpty {
+            isAvailables = false
+        }
+
+        condition.unlock()
+        return chip
     }
 }
 
@@ -101,7 +106,7 @@ class WorkThread: Thread {
             print("Кол-во удаленных чипов из массива - \(numberOfChipsRemoved)")
             chip.sodering()
 
-        } while storage.storageForChip.isEmpty || storage.availables
+        } while storage.isEmpty || storage.isAvailables
     }
 }
 
